@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Auto preset mode",
+    "description": "Adds an Auto agent preset mode that automatically selects Antigravity mode for Gemini models, Codex mode for GPT models, and Standard mode for other models."
+  }
+}

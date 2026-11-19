@@ -1,0 +1,23 @@
+- insert:
+    - id: auto-mode
+      name: '@local/dsh-auto-mode'
+      config:
+        autoPresetId: auto
+        geminiPreset: agy
+        gptPreset: codex
+        fallbackPreset: standard
+
+    - id: preset-auto
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: auto
+        name: Auto
+        description: Automatically selects Antigravity mode for Gemini models, Codex mode for GPT models, and Standard mode for other models.
+        order: 0
+        plugins:
+          - id: auto-mode-router
+            name: '@local/dsh-auto-mode/preset'
+            config:
+              geminiPreset: agy
+              gptPreset: codex
+              fallbackPreset: standard

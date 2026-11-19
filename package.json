@@ -1,0 +1,79 @@
+{
+  "name": "@local/dsh-auto-mode",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Adds an Auto agent preset mode that automatically selects Antigravity mode for Gemini models, Codex mode for GPT models, and Standard mode for other models.",
+  "license": "MIT",
+  "author": "TideDra",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TideDra/dsh-auto-mode.git"
+  },
+  "homepage": "https://github.com/TideDra/dsh-auto-mode#readme",
+  "bugs": {
+    "url": "https://github.com/TideDra/dsh-auto-mode/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "dsh-preset",
+    "auto",
+    "antigravity",
+    "codex"
+  ],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.0-rc.1 <0.3.0-0"
+  },
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./index.js",
+    "./preset": "./src/preset.js",
+    "./preset/locale/*.json": "./locale/*.json",
+    "./preset/icon": "./icon.svg",
+    "./router": "./src/router.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "src/*.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:e2e": "node test/verify-web-preset.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-agent-preset",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-model-selection"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.1.0",
+    "@deepseek-ai/schemastery": "~3.19.0",
+    "zod": "*"
+  }
+}

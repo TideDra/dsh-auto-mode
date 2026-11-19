@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Auto 预设模式",
+    "description": "添加名为 Auto 的预设模式，根据所选模型自动切换预设：选择 Gemini 模型时对应 Antigravity 模式，选择 GPT 模型时对应 Codex 模式，其余模型默认使用标准模式。"
+  }
+}
