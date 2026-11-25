@@ -13,6 +13,7 @@ Adds an **`Auto`** agent preset mode (`id: auto`) to [DeepSeek Harness (DSH)](ht
 - **Live Switching Before Turn 1**: While a session is blank (before sending the first message), switching models in the composer or via `/model` automatically switches the active preset, recomposes tools and system prompts, and updates mode-specific controls (`AGY Auto/Plan` or `⚡ Ultra`).
 - **Session Lock After Turn 1**: Once Turn 1 starts, the matched preset locks into the session log so tool history and prompt caching remain consistent across turns and restarts.
 - **Persistent Blank State & Hero Indicator**: Keeps `Auto` selected in the New Session preset picker (and displays an `Auto → <Matched Preset>` badge on the Hero row) across reloads while the session remains blank; gracefully falls back if a target preset is disabled or missing.
+- **Cross-Preset Subagent Auto-Routing (`routeSubagents`)**: When a `spawn` subagent (such as an `AgentTeams` member) specifies a cross-family model without an explicit `agentPreset` and the provider supports independent preset selection (`capabilities.agentPreset && !inheritsParentContext`), automatically mounts the matching preset (`gpt-*` → `codex`, `gemini-*` → `agy`, others → `standard`) instead of inheriting the parent's preset. `fork` subagents, same-preset children, and explicit `agentPreset` values remain untouched.
 
 ## Installation
 
@@ -47,6 +48,7 @@ Configured in `cordis.patch.yml` under the `auto-mode` entry:
 | `geminiPreset` | `string` | `'agy'` | Target preset ID for Gemini models |
 | `gptPreset` | `string` | `'codex'` | Target preset ID for GPT models |
 | `fallbackPreset` | `string` | `'standard'` | Fallback preset ID for non-Gemini / non-GPT models |
+| `routeSubagents` | `boolean` | `true` | Automatically route cross-preset `spawn` subagents (e.g. `AgentTeams` members) to their matching model preset |
 
 ## Verification
 

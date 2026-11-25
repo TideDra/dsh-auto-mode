@@ -30,6 +30,7 @@ export function resolveAutoConfig(raw = {}) {
     geminiPreset: sanitizeTarget(raw?.geminiPreset, DEFAULT_GEMINI_PRESET),
     gptPreset: sanitizeTarget(raw?.gptPreset, DEFAULT_GPT_PRESET),
     fallbackPreset: sanitizeTarget(raw?.fallbackPreset, DEFAULT_FALLBACK_PRESET),
+    routeSubagents: raw?.routeSubagents !== false,
   })
 }
 
