@@ -18,6 +18,7 @@ export const Config = z.object({
   geminiPreset: z.string().default('agy'),
   gptPreset: z.string().default('codex'),
   fallbackPreset: z.string().default('standard'),
+  routeSubagents: z.boolean().default(true),
 })
 
 function unwrapService(service) {
@@ -356,6 +357,145 @@ export function apply(ctx, rawConfig = {}) {
       }
     }, 'auto-mode: restore sessionController wrappers')
   })
+
+  // Route cross-family subagent models (e.g., AGY spawning a GPT reviewer via AgentTeams)
+  // to their matching agentPreset (gpt-* -> codex, gemini-* -> agy) when the subagent
+  // provider supports independent preset selection (e.g., `spawn`, never `fork`).
+  if (config.routeSubagents) {
+    ctx.inject(['subagents'], (subCtx) => {
+      const rawSubagents = unwrapService(subCtx.subagents)
+      if (!rawSubagents || typeof rawSubagents !== 'object') return
+
+      const supportsIndependentPreset = (providerName) => {
+        if (typeof providerName !== 'string' || providerName.length === 0) return false
+        const providerMap = rawSubagents.providers
+        if (providerMap && typeof providerMap.get === 'function') {
+          const provider = providerMap.get(providerName)
+          if (!provider) return false
+          return Boolean(provider.capabilities?.agentPreset) && !provider.inheritsParentContext
+        }
+        return providerName !== 'fork'
+      }
+
+      const parentPresetOf = (parent) => {
+        if (!parent) return undefined
+        try {
+          if (typeof rawPresets.composedPreset === 'function' && parent.ctx) {
+            const composed = rawPresets.composedPreset(parent.ctx)
+            if (typeof composed === 'string' && composed.length > 0) return composed
+          }
+        } catch {}
+        try {
+          if (typeof rawPresets.presetForSession === 'function' && parent.session) {
+            const fromSession = rawPresets.presetForSession(parent.session)
+            if (typeof fromSession === 'string' && fromSession.length > 0) return fromSession
+          }
+        } catch {}
+        return undefined
+      }
+
+      const resolveSubagentRequest = async (providerName, request) => {
+        if (!request || typeof request !== 'object') return request
+        if (!supportsIndependentPreset(providerName)) return request
+
+        const explicitPreset = request.agentPreset
+        if (explicitPreset !== undefined && explicitPreset !== config.autoPresetId) {
+          return request
+        }
+
+        const childModel =
+          typeof request.agentOptions?.model === 'string' && request.agentOptions.model.trim().length > 0
+            ? request.agentOptions
+            : explicitPreset === config.autoPresetId
+              ? getEffectiveModel(request.parent)
+              : undefined
+
+        if (!childModel) return request
+
+        const target = await resolveTargetForSelection(childModel)
+        if (explicitPreset === config.autoPresetId) {
+          return { ...request, agentPreset: target }
+        }
+
+        const parentPreset = parentPresetOf(request.parent)
+        if (parentPreset === target) {
+          return request
+        }
+
+        return { ...request, agentPreset: target }
+      }
+
+      subCtx.effect(() => {
+        const disposers = []
+        for (const key of ['start', 'startContinuable', 'startActivation']) {
+          const original = rawSubagents[key]
+          if (typeof original !== 'function') continue
+          const descriptor = Object.getOwnPropertyDescriptor(rawSubagents, key)
+
+          const wrapped = async function wrappedSubagentStart(...args) {
+            await storageReadyPromise.catch(() => {})
+            try {
+              if (key === 'start' && args.length >= 2) {
+                const nextReq = await resolveSubagentRequest(args[0], args[1])
+                if (nextReq !== args[1]) {
+                  const nextArgs = [...args]
+                  nextArgs[1] = nextReq
+                  return Reflect.apply(original, this, nextArgs)
+                }
+              } else if (key === 'startContinuable' && args[0] && typeof args[0] === 'object') {
+                const spec = args[0]
+                const nextReq = await resolveSubagentRequest(spec.provider, spec.request)
+                if (nextReq !== spec.request) {
+                  const nextArgs = [...args]
+                  nextArgs[0] = { ...spec, request: nextReq }
+                  return Reflect.apply(original, this, nextArgs)
+                }
+              } else if (key === 'startActivation' && args[0] && typeof args[0] === 'object') {
+                const spec = args[0]
+                if (spec.request !== undefined && typeof spec.request === 'object') {
+                  const nextReq = await resolveSubagentRequest(spec.provider, spec.request)
+                  if (nextReq !== spec.request) {
+                    const nextArgs = [...args]
+                    nextArgs[0] = { ...spec, request: nextReq }
+                    return Reflect.apply(original, this, nextArgs)
+                  }
+                } else {
+                  const nextSpec = await resolveSubagentRequest(spec.provider, spec)
+                  if (nextSpec !== spec) {
+                    const nextArgs = [...args]
+                    nextArgs[0] = nextSpec
+                    return Reflect.apply(original, this, nextArgs)
+                  }
+                }
+              }
+            } catch (error) {
+              ctx.logger.warn(`auto-mode: subagent preset routing skipped for "${key}": ${String(error)}`)
+            }
+            return Reflect.apply(original, this, args)
+          }
+
+          Object.defineProperty(rawSubagents, key, {
+            value: wrapped,
+            writable: true,
+            configurable: true,
+          })
+          disposers.push(() => {
+            if (Object.getOwnPropertyDescriptor(rawSubagents, key)?.value !== wrapped) return
+            if (descriptor === undefined) {
+              Reflect.deleteProperty(rawSubagents, key)
+            } else {
+              Object.defineProperty(rawSubagents, key, descriptor)
+            }
+          })
+        }
+        return () => {
+          for (const dispose of disposers.reverse()) {
+            dispose()
+          }
+        }
+      }, 'auto-mode: subagent preset routing')
+    })
+  }
 
   // Observe durable session events to:
   // 1) Lock and stop auto-switching once Turn 1 begins (`turn/start`)

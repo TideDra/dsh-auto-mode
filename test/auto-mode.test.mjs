@@ -671,3 +671,138 @@ test('Client module loads cleanly, masks blank Auto sessions in sessions.list, a
     globalThis.fetch = origFetch
   }
 })
+
+test('Subagent auto-preset routing: AGY spawning GPT routes to codex, fork and same-family stay untouched, and unwraps on dispose', async () => {
+  const { apply } = await import('../index.js')
+
+  const presets = new Map([
+    ['auto', { id: 'auto' }],
+    ['agy', { id: 'agy' }],
+    ['codex', { id: 'codex' }],
+    ['standard', { id: 'standard' }],
+  ])
+
+  const received = []
+  const origStartActivation = async (spec) => {
+    received.push({ method: 'startActivation', spec })
+    return { childId: 'child-1', result: Promise.resolve({}) }
+  }
+  const origStartContinuable = async (spec) => {
+    received.push({ method: 'startContinuable', spec })
+    return { childId: 'child-2' }
+  }
+  const origStart = async (provider, request) => {
+    received.push({ method: 'start', provider, request })
+    return { childId: 'child-3' }
+  }
+
+  const subagents = {
+    providers: new Map([
+      ['spawn', { name: 'spawn', capabilities: { agentPreset: true }, inheritsParentContext: false }],
+      ['fork', { name: 'fork', capabilities: { agentPreset: false }, inheritsParentContext: true }],
+    ]),
+    startActivation: origStartActivation,
+    startContinuable: origStartContinuable,
+    start: origStart,
+  }
+
+  const effectDisposers = []
+  const agyParent = {
+    id: 'parent-agy',
+    ctx: { tag: 'agy-ctx' },
+    session: { id: 'parent-agy', header: { agentPreset: 'agy' } },
+    model: { current: () => ({ provider: 'github-copilot-live', model: 'gemini-4-neon' }) },
+  }
+
+  const fakeCtx = {
+    logger: { warn() {}, info() {} },
+    agentPresets: {
+      defaultId: 'auto',
+      resolve: async (id) => presets.get(id),
+      mount: async () => {},
+      select: async (_agent, id) => id,
+      list: async () => [...presets.values()],
+      presetForSession: (s) => s?.header?.agentPreset,
+      composedPreset: (c) => (c?.tag === 'agy-ctx' ? 'agy' : undefined),
+    },
+    agentDefaultModel: {
+      currentSelection: () => ({ provider: 'github-copilot-live', model: 'gemini-4-neon' }),
+    },
+    agents: {
+      get: () => undefined,
+      turnBoundaryOf: () => ({ openTurnStartSeq: null, lastTurn: 0 }),
+    },
+    sessions: {
+      get: () => undefined,
+    },
+    subagents,
+    on: () => () => {},
+    effect(cb) {
+      const dispose = cb()
+      if (typeof dispose === 'function') effectDisposers.push(dispose)
+      return dispose
+    },
+    inject(deps, cb) {
+      if (deps.includes('subagents')) {
+        cb(fakeCtx)
+      }
+    },
+  }
+
+  apply(fakeCtx, {
+    autoPresetId: 'auto',
+    geminiPreset: 'agy',
+    gptPreset: 'codex',
+    fallbackPreset: 'standard',
+  })
+
+  // 1) AGY parent spawning gpt-6.1-sol via rc.5 flat startActivation -> routed to codex
+  await subagents.startActivation({
+    provider: 'spawn',
+    label: 'agent-teams:exp:gpt-reviewer',
+    parent: agyParent,
+    agentOptions: { provider: 'github-copilot-live', model: 'gpt-6.1-sol', reasoningEffort: 'medium' },
+  })
+  assert.equal(received.at(-1).spec.agentPreset, 'codex')
+
+  // 2) AGY parent spawning gemini-4-carbon -> same family as parent, leaves agentPreset omitted
+  await subagents.startActivation({
+    provider: 'spawn',
+    label: 'agent-teams:exp:gemini-helper',
+    parent: agyParent,
+    agentOptions: { provider: 'github-copilot-live', model: 'gemini-4-carbon' },
+  })
+  assert.equal(received.at(-1).spec.agentPreset, undefined)
+
+  // 3) Fork provider (inheritsParentContext: true) -> never injects agentPreset
+  await subagents.startActivation({
+    provider: 'fork',
+    parent: agyParent,
+    agentOptions: { provider: 'github-copilot-live', model: 'gpt-6.1-sol' },
+  })
+  assert.equal(received.at(-1).spec.agentPreset, undefined)
+
+  // 4) Explicit agentPreset is preserved; explicit 'auto' is resolved
+  await subagents.startContinuable({
+    provider: 'spawn',
+    request: {
+      parent: agyParent,
+      agentPreset: 'standard',
+      agentOptions: { provider: 'github-copilot-live', model: 'gpt-6.1-sol' },
+    },
+  })
+  assert.equal(received.at(-1).spec.request.agentPreset, 'standard')
+
+  await subagents.start('spawn', {
+    parent: agyParent,
+    agentPreset: 'auto',
+    agentOptions: { provider: 'github-copilot-live', model: 'gpt-6.1-sol' },
+  })
+  assert.equal(received.at(-1).request.agentPreset, 'codex')
+
+  // 5) Dispose restores original subagent methods cleanly
+  for (const dispose of effectDisposers.reverse()) dispose()
+  assert.equal(subagents.startActivation, origStartActivation)
+  assert.equal(subagents.startContinuable, origStartContinuable)
+  assert.equal(subagents.start, origStart)
+})

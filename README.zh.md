@@ -13,6 +13,7 @@
 - **首轮消息前动态联动**：在新建/空白会话（发送第一条消息前）通过模型选择器或 `/model` 切换模型时，自动重挂载对应预设的工具集、系统提示词以及专属开关（如 `AGY Auto/Plan` 或 `⚡ Ultra`）。
 - **首轮开始后自动锁定**：第一轮对话开始后自动锁定该会话的最终预设模式，确保工具历史与 Prompt Cache 语义一致。
 - **空白期持久化与状态提示**：新建会话栏保持选中 **`Auto`**，并在右侧展示实时匹配标签（`自动 → Antigravity` / `自动 → Codex` / `自动 → 标准模式`），页面刷新或 Host 重启仍可保留空白会话的 Auto 状态；目标预设缺失时安全回退。
+- **跨预设子代理自动路由（`routeSubagents`）**：当支持独立预设的 `spawn` 子代理（例如 `AgentTeams` 异构模型成员）显式指定了跨家族模型且未手写 `agentPreset` 时，自动为其挂载匹配的预设（`gpt-*` → `codex`、`gemini-*` → `agy`、其他 → `standard`），避免 GPT 子代理继续继承父会话的 `Antigravity` 预设；`fork` 子代理、与父会话同预设的子代理以及显式指定过 `agentPreset` 的调用不受影响。
 
 ## 安装
 
@@ -47,6 +48,7 @@ dsh plugin --profile web add /path/to/dsh-auto-mode -w
 | `geminiPreset` | `string` | `'agy'` | Gemini 模型对应的预设 ID |
 | `gptPreset` | `string` | `'codex'` | GPT 模型对应的预设 ID |
 | `fallbackPreset` | `string` | `'standard'` | 非 Gemini / GPT 模型的回退预设 ID |
+| `routeSubagents` | `boolean` | `true` | 是否对支持独立预设的 `spawn` 子代理（如 `AgentTeams` 成员）按目标模型自动路由预设 |
 
 ## 测试验证
 
